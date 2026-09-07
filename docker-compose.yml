@@ -1,0 +1,83 @@
+version: '3.9'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: interview-atlas-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: interview_atlas
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - interview-atlas-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: interview-atlas-backend
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGODB_URI: mongodb://admin:password@mongodb:27017/interview_atlas?authSource=admin
+      MONGODB_DATABASE: interview_atlas
+      MONGODB_VECTOR_COLLECTION: chunks
+      MONGODB_BM25_COLLECTION: chunks
+      MONGODB_DOCUMENT_COLLECTION: documents
+      MONGODB_DOCUMENT_BUCKET: documents
+      EMBEDDING_PROVIDER: mistral
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY}
+      MISTRAL_EMBEDDING_MODEL: mistral-embed
+      LLM_PROVIDER: mistral
+      MISTRAL_LLM_MODEL: mistral-large-latest
+      VECTOR_WEIGHT: '0.6'
+      BM25_WEIGHT: '0.4'
+      RETRIEVAL_TOP_K: '5'
+      RETRIEVAL_CONTEXT_LIMIT: '2000'
+      CHUNK_SIZE_CHARACTERS: '1200'
+      CHUNK_OVERLAP_CHARACTERS: '200'
+      MAX_UPLOAD_SIZE_BYTES: '10485760'
+      UPLOAD_TEMP_DIR: ./tmp/uploads
+      MONGODB_VECTOR_INDEX_NAME: vector_embedding
+      MONGODB_VECTOR_DIMENSIONS: '1024'
+      FRONTEND_ORIGIN: http://localhost:80
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./backend/tmp:/app/backend/tmp
+    networks:
+      - interview-atlas-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: interview-atlas-frontend
+    ports:
+      - "80:80"
+    environment:
+      VITE_API_URL: http://localhost:4000
+    depends_on:
+      - backend
+    networks:
+      - interview-atlas-network
+
+networks:
+  interview-atlas-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
+    driver: local
